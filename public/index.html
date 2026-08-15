@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Stack Manager — Enterprise Developer Suite</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            hub: {
+              950: '#070a12',
+              900: '#0b0f19',
+              850: '#101624',
+              800: '#172033',
+              750: '#1f2a42',
+              700: '#2a3857',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070a12; }
+    ::-webkit-scrollbar-thumb { background: #1f2a42; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2a3857; }
+    
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+    }
+    .animate-pulse-glow { animation: pulseGlow 2s infinite ease-in-out; }
+
+    @keyframes slideInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-slide-up { animation: slideInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  </style>
+</head>
+<body class="bg-hub-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-3 max-w-md w-full px-4 pointer-events-none"></div>
+
+  <!-- Primary Top Navbar -->
+  <header class="bg-hub-900/80 backdrop-blur-xl border-b border-hub-800/80 sticky top-0 z-40 shadow-xl">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Brand & Engine Title -->
+      <div class="flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 p-0.5 shadow-lg shadow-emerald-500/20">
+          <div class="w-full h-full bg-hub-950 rounded-[14px] flex items-center justify-center font-extrabold text-emerald-400 text-xl">
+            ⚡
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-extrabold tracking-tight text-white">Local Stack Manager</h1>
+            <span class="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">Fedora Native</span>
+            <span id="sseStatusBadge" class="hidden text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">Reconnecting SSE...</span>
+          </div>
+          <p class="text-slate-400 text-xs font-medium">Native Nginx • MariaDB • PHP 8.x • Real-time SSE • Systemd Supervisor</p>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Summary Bar & Utilities -->
+      <div class="flex items-center gap-3.5">
+        
+        <!-- Raycast Style Command Palette Trigger -->
+        <button onclick="openSearchModal()" class="hidden sm:flex items-center gap-3 bg-hub-850 hover:bg-hub-800 text-slate-300 hover:text-white px-3.5 py-2 rounded-xl border border-hub-750 text-xs font-medium transition shadow-inner group">
+          <span class="text-slate-400 group-hover:text-emerald-400 transition">🔍</span>
+          <span>Search everywhere...</span>
+          <kbd class="bg-hub-950 text-slate-400 border border-hub-700 px-1.5 py-0.5 rounded font-mono text-[10px] group-hover:text-emerald-400 transition">Ctrl K</kbd>
+        </button>
+
+        <!-- Dynamic Real-time Resource Indicators (SSE Streamed) -->
+        <div class="flex items-center gap-4 bg-hub-950/90 border border-hub-800 rounded-xl px-4 py-2 text-xs font-mono">
+          <div>
+            <div class="text-slate-400 text-[10px] font-sans">CPU LOAD</div>
+            <div class="font-bold text-emerald-400" id="cpuVal">--%</div>
+          </div>
+          <div class="h-6 w-px bg-hub-800"></div>
+          <div>
+            <div class="text-slate-400 text-[10px] font-sans flex items-center gap-1">
+              <span>REAL RAM</span>
+              <span class="text-[9px] text-slate-500" title="Excluding Linux Buffers & Cache">(No Buff)</span>
+            </div>
+            <div class="font-bold text-cyan-400">
+              <span id="ramVal">-- / -- GB</span>
+            </div>
+          </div>
+        </div>
+
+        <button onclick="openDiagnosticsModal()" class="bg-hub-850 hover:bg-hub-800 text-slate-200 hover:text-white px-3 py-2 rounded-xl border border-hub-750 text-xs font-semibold flex items-center gap-1.5 transition">
+          <span>🩺</span>
+          <span>Diagnostics</span>
+        </button>
+
+        <button onclick="toggleActivityDrawer()" class="bg-hub-850 hover:bg-hub-800 text-slate-200 hover:text-white px-3 py-2 rounded-xl border border-hub-750 text-xs font-semibold flex items-center gap-1.5 transition">
+          <span>⏱️</span>
+          <span>Timeline</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- 1. System Services Status Row (3 Nuanced Hero Cards) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+      
+      <!-- Nginx Engine Card -->
+      <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-xl hover:border-hub-750 transition-all duration-300 relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3.5">
+            <div class="relative flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-lg">
+              <span id="nginxPulse" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 animate-pulse-glow"></span>
+              N
+            </div>
+            <div>
+              <h2 class="font-extrabold text-white text-base">Nginx Engine</h2>
+              <span id="nginxStatus" class="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-hub-850 text-slate-400 inline-block mt-0.5">Checking...</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="controlService('nginx', 'restart', this)" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-1.5 text-xs rounded-xl font-semibold transition shadow-md shadow-blue-900/30">Restart</button>
+            <button id="nginxToggleBtn" onclick="toggleService('nginx', this)" class="bg-hub-850 hover:bg-hub-800 text-slate-200 px-3 py-1.5 text-xs rounded-xl font-semibold transition">Stop</button>
+          </div>
+        </div>
+        <div class="mt-3.5 pt-3 border-t border-hub-800/80 flex items-center justify-between text-xs text-slate-400 font-mono">
+          <span>Ports: 80, 443</span>
+          <span class="text-emerald-400 font-sans text-[11px]">/etc/nginx/conf.d/</span>
+        </div>
+      </div>
+
+      <!-- MariaDB Server Card -->
+      <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-xl hover:border-hub-750 transition-all duration-300 relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3.5">
+            <div class="relative flex items-center justify-center w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold text-lg">
+              <span id="mariadbPulse" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-blue-500 animate-pulse-glow"></span>
+              M
+            </div>
+            <div>
+              <h2 class="font-extrabold text-white text-base">MariaDB Server</h2>
+              <span id="mariadbStatus" class="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-hub-850 text-slate-400 inline-block mt-0.5">Checking...</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="controlService('mariadb', 'restart', this)" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-1.5 text-xs rounded-xl font-semibold transition shadow-md shadow-blue-900/30">Restart</button>
+            <button id="mariadbToggleBtn" onclick="toggleService('mariadb', this)" class="bg-hub-850 hover:bg-hub-800 text-slate-200 px-3 py-1.5 text-xs rounded-xl font-semibold transition">Stop</button>
+          </div>
+        </div>
+        <div id="pmaLinkContainer" class="mt-3.5 pt-3 border-t border-hub-800/80 flex items-center justify-between text-xs">
+          <span class="text-slate-400 font-mono">Port: 3306</span>
+          <a href="http://localhost:8080" target="_blank" class="text-emerald-400 hover:text-emerald-300 font-mono font-bold bg-emerald-950/60 border border-emerald-500/30 px-3 py-1 rounded-xl flex items-center gap-1.5 transition">
+            <span>phpMyAdmin :8080</span>
+            <span class="text-[10px]">↗</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- PHP-FPM Card -->
+      <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-xl hover:border-hub-750 transition-all duration-300 relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3.5">
+            <div class="relative flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold text-lg">
+              <span id="phpPulse" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-indigo-500 animate-pulse-glow"></span>
+              P
+            </div>
+            <div>
+              <h2 class="font-extrabold text-white text-base">PHP-FPM 8.x</h2>
+              <span id="phpStatus" class="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-hub-850 text-slate-400 inline-block mt-0.5">Checking...</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="controlService('php-fpm', 'restart', this)" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-1.5 text-xs rounded-xl font-semibold transition shadow-md shadow-blue-900/30">Restart</button>
+            <button id="phpToggleBtn" onclick="toggleService('php-fpm', this)" class="bg-hub-850 hover:bg-hub-800 text-slate-200 px-3 py-1.5 text-xs rounded-xl font-semibold transition">Stop</button>
+          </div>
+        </div>
+        <div class="mt-3.5 pt-3 border-t border-hub-800/80 flex items-center justify-between text-xs text-slate-400 font-mono">
+          <span>FastCGI Socket</span>
+          <span class="text-indigo-300">/run/php-fpm/www.sock</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 2. Dual Column Workspace Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT COLUMN: Scanned Projects & Quick Setup (5 Cols) -->
+      <div class="lg:col-span-5 space-y-6">
+        
+        <!-- Scanned Project Folders Card -->
+        <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-2xl space-y-4">
+          <div class="flex items-center justify-between border-b border-hub-800/80 pb-3">
+            <div>
+              <h3 class="font-extrabold text-base text-white flex items-center gap-2">
+                <span>📁</span>
+                <span>Projects in ~/Projects</span>
+              </h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Auto-detected local repositories</p>
+            </div>
+            <button onclick="loadScannedProjects()" class="text-xs bg-hub-850 hover:bg-hub-800 text-slate-300 hover:text-white px-3 py-1.5 rounded-xl border border-hub-750 transition flex items-center gap-1">
+              <span>🔄</span> Rescan
+            </button>
+          </div>
+
+          <!-- Project Folders List -->
+          <div id="projectsListContainer" class="max-h-[380px] overflow-y-auto space-y-2.5 pr-1">
+            <div class="p-6 text-center text-slate-500 text-xs">Scanning ~/Projects...</div>
+          </div>
+        </div>
+
+        <!-- Quick MariaDB Setup Card -->
+        <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-2xl space-y-4">
+          <h3 class="font-extrabold text-base text-blue-400 border-b border-hub-800/80 pb-3 flex items-center gap-2">
+            <span>🔑</span>
+            <span>Quick MariaDB Database Setup</span>
+          </h3>
+
+          <form onsubmit="createDb(event)" class="space-y-3.5 text-xs">
+            <div>
+              <label class="block text-slate-300 font-medium mb-1">Database Name</label>
+              <input type="text" id="dbName" placeholder="my_app_db" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-slate-300 font-medium mb-1">DB Username</label>
+              <input type="text" id="dbUser" placeholder="my_app_user" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-slate-300 font-medium mb-1">DB Password</label>
+              <input type="password" id="dbPass" placeholder="SecretPassword123!" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none" />
+            </div>
+
+            <button type="submit" id="btnCreateDb" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-2.5 rounded-xl transition shadow-lg shadow-blue-900/30 text-xs flex items-center justify-center gap-2">
+              <span>⚡</span>
+              <span>Create Database & Grant Privileges</span>
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: Virtual Hosts & Database Suite (7 Cols) -->
+      <div class="lg:col-span-7 space-y-6">
+        
+        <!-- Virtual Hosts Suite Card -->
+        <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-2xl space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-hub-800/80 pb-3">
+            <div>
+              <h3 class="font-extrabold text-base text-white flex items-center gap-2">
+                <span>🌐</span>
+                <span>Active Nginx Virtual Hosts</span>
+              </h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Configuration directory: <code class="text-emerald-400 font-mono">/etc/nginx/conf.d/</code></p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="loadSites()" class="text-xs bg-hub-850 hover:bg-hub-800 text-slate-300 hover:text-white px-3 py-1.5 rounded-xl border border-hub-750 transition">🔄 Refresh</button>
+              <button onclick="openCreateSiteModal()" class="text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold px-3.5 py-1.5 rounded-xl transition shadow-md shadow-emerald-900/30 flex items-center gap-1.5">
+                <span>+</span>
+                <span>New Site Wizard</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Sites Data Table -->
+          <div class="overflow-x-auto rounded-xl border border-hub-800 bg-hub-950/80">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-hub-950 text-slate-400 uppercase text-[11px] font-semibold border-b border-hub-800">
+                <tr>
+                  <th class="p-3.5">Virtual Host / Conf</th>
+                  <th class="p-3.5">Status</th>
+                  <th class="p-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sitesTableBody" class="divide-y divide-hub-850">
+                <tr><td colspan="3" class="p-6 text-center text-slate-500">Loading virtual hosts...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- MariaDB Database Lister Card -->
+        <div class="bg-hub-900/70 backdrop-blur-xl border border-hub-800 rounded-2xl p-5 shadow-2xl space-y-4">
+          <div class="flex items-center justify-between border-b border-hub-800/80 pb-3">
+            <div>
+              <h3 class="font-extrabold text-base text-cyan-400 flex items-center gap-2">
+                <span>💾</span>
+                <span>MariaDB Database Lister</span>
+              </h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Existing databases & 1-Click .sql export</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="openDbConfigModal()" class="text-xs bg-hub-850 hover:bg-hub-800 text-amber-300 hover:text-white px-2.5 py-1 rounded-xl border border-hub-750 transition flex items-center gap-1">
+                <span>⚙️</span> Root Pass
+              </button>
+              <button onclick="loadDatabases()" class="text-xs bg-hub-850 hover:bg-hub-800 text-slate-300 hover:text-white px-2.5 py-1 rounded-xl border border-hub-750 transition">🔄</button>
+            </div>
+          </div>
+
+          <div class="max-h-60 overflow-y-auto rounded-xl border border-hub-800 bg-hub-950/80">
+            <ul id="dbListContainer" class="divide-y divide-hub-850 text-xs">
+              <li class="p-4 text-center text-slate-500">Loading databases...</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Developer Shortcuts Box -->
+        <div class="p-4 rounded-2xl bg-hub-900/50 border border-hub-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2 text-slate-300">
+            <span>⚡ Enterprise Utilities:</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="openArtisanModal()" class="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/40 font-semibold transition">🚩 Artisan Runner</button>
+            <button onclick="openLogsModal()" class="px-3 py-1.5 rounded-xl bg-hub-850 hover:bg-hub-800 text-slate-200 border border-hub-750 font-semibold transition">📋 Live Log Console</button>
+            <button onclick="openPhpInfoModal()" class="px-3 py-1.5 rounded-xl bg-hub-850 hover:bg-hub-800 text-slate-200 border border-hub-750 font-semibold transition">🐘 PHP Info</button>
+            <button onclick="fetchSystemdSetup()" class="px-3 py-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-800/40 font-semibold transition">⚙️ Systemd Supervisor</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- MODAL 1: Create Virtual Host Wizard -->
+  <div id="createSiteModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🚀</span>
+          <h3 class="font-extrabold text-white text-base">New Nginx Virtual Host Wizard</h3>
+        </div>
+        <button onclick="closeCreateSiteModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+      </div>
+
+      <form id="createSiteForm" onsubmit="createSite(event)" class="p-6 space-y-4 text-xs">
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Site / Conf Name</label>
+          <input type="text" id="siteName" placeholder="my-app" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Domain / Hostname</label>
+          <input type="text" id="domain" placeholder="my-app.local" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Project Root Path</label>
+          <input type="text" id="rootPath" placeholder="/home/sdev/Projects/my-app" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono text-[11px] focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-300 font-medium mb-1">Stack Preset</label>
+            <select id="siteType" class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none">
+              <option value="laravel">PHP / Laravel (Socket + /public)</option>
+              <option value="proxy">Node.js / React Proxy (Port)</option>
+              <option value="vite-spa">Vite SPA (/dist + HTML5)</option>
+              <option value="wordpress">WordPress (Socket)</option>
+              <option value="static">Static HTML</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-300 font-medium mb-1">Port (Proxy Mode)</label>
+            <input type="number" id="port" value="80" class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <label class="flex items-center gap-2 p-2.5 rounded-xl bg-hub-950 border border-hub-800 text-slate-300 cursor-pointer">
+            <input type="checkbox" id="toggleEnableSsl" checked class="rounded bg-hub-900 border-hub-750 text-emerald-500 focus:ring-0">
+            <span class="font-medium text-[11px]">🔒 SSL Certificate (443)</span>
+          </label>
+          <label class="flex items-center gap-2 p-2.5 rounded-xl bg-hub-950 border border-hub-800 text-slate-300 cursor-pointer">
+            <input type="checkbox" id="toggleAutoHosts" checked class="rounded bg-hub-900 border-hub-750 text-emerald-500 focus:ring-0">
+            <span class="font-medium text-[11px]">📌 Map in /etc/hosts</span>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-hub-800">
+          <button type="button" onclick="closeCreateSiteModal()" class="px-4 py-2 bg-hub-850 hover:bg-hub-800 text-slate-300 font-semibold rounded-xl transition">Cancel</button>
+          <button type="submit" id="btnSubmitSite" class="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/30 transition">Generate & Reload Nginx</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Raycast Style Global Search (Ctrl+K) -->
+  <div id="searchModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center gap-3">
+        <span class="text-lg">🔍</span>
+        <input type="text" id="searchInput" oninput="filterGlobalSearch(this.value)" placeholder="Type to search sites, databases, projects..." class="w-full bg-transparent text-white placeholder-slate-500 text-sm focus:outline-none" />
+        <kbd onclick="closeSearchModal()" class="text-xs bg-hub-850 text-slate-400 px-2 py-1 rounded border border-hub-750 cursor-pointer">ESC</kbd>
+      </div>
+      <div id="searchResultsContainer" class="p-4 max-h-80 overflow-y-auto text-xs space-y-2 divide-y divide-hub-850">
+        <p class="text-slate-500 text-center py-4">Type to search sites, databases, or project folders...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Nginx Config Editor & 1-Click Rollback -->
+  <div id="configModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl">⚙️</span>
+          <div>
+            <h3 class="font-bold text-white text-base" id="modalConfigTitle">Edit Configuration</h3>
+            <p class="text-xs text-slate-400 font-mono" id="modalConfigPath">/etc/nginx/conf.d/</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="openConfigBackupsList()" class="px-3 py-1.5 bg-hub-850 hover:bg-hub-800 text-cyan-300 border border-hub-750 text-xs rounded-xl font-semibold transition">
+            ⏪ Rollbacks
+          </button>
+          <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+        </div>
+      </div>
+
+      <div class="p-4 flex-1 overflow-y-auto space-y-3">
+        <div id="modalSyntaxStatus" class="hidden p-3 rounded-xl text-xs font-mono border"></div>
+        <div id="configBackupsPanel" class="hidden p-3 bg-hub-950 border border-hub-800 rounded-xl space-y-2 text-xs">
+          <div class="font-semibold text-cyan-300">Available Historical Backups (Last 5):</div>
+          <div id="backupsListItems" class="space-y-1 font-mono"></div>
+        </div>
+        <div class="relative rounded-xl border border-hub-800 bg-hub-950 overflow-hidden">
+          <textarea id="configEditorTextarea" spellcheck="false" class="w-full h-96 bg-hub-950 text-slate-100 font-mono text-xs p-4 focus:outline-none resize-none leading-relaxed"></textarea>
+        </div>
+      </div>
+
+      <div class="p-4 bg-hub-950 border-t border-hub-800 flex items-center justify-between gap-3">
+        <span class="text-xs text-slate-400">Edits are syntax checked via <code class="text-emerald-400">nginx -t</code> before reload.</span>
+        <div class="flex items-center gap-2">
+          <button onclick="closeConfigModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-hub-850 hover:bg-hub-800 text-slate-300 transition">Cancel</button>
+          <button onclick="saveConfigModal(this)" class="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-lg shadow-emerald-900/30 flex items-center gap-1.5">
+            <span>💾</span>
+            <span>Save & Reload Nginx</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: Live SSE Streaming Log Console with Search & Highlighting -->
+  <div id="logsModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-xl">📋</span>
+          <div>
+            <h3 class="font-bold text-white text-base">Live SSE Log Console</h3>
+            <p class="text-xs text-slate-400 font-mono" id="logPathDisplay">/var/log/nginx/error.log</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- Log Search Input -->
+          <input type="text" id="logSearchInput" oninput="filterLogsOutput()" placeholder="Filter logs..." class="bg-hub-850 border border-hub-750 text-xs rounded-xl px-3 py-1.5 text-white placeholder-slate-500 focus:outline-none w-44" />
+
+          <div class="bg-hub-900 border border-hub-800 p-1 rounded-xl flex gap-1 text-xs">
+            <button id="tabErrorLog" onclick="switchLogTab('error')" class="px-3 py-1.5 rounded-lg font-semibold bg-rose-950/80 text-rose-400 border border-rose-800/50">Error Log</button>
+            <button id="tabAccessLog" onclick="switchLogTab('access')" class="px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white">Access Log</button>
+          </div>
+
+          <button onclick="closeLogsModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+        </div>
+      </div>
+
+      <div class="p-4 bg-hub-950 flex-1 overflow-hidden">
+        <div id="logOutputConsole" onscroll="handleLogConsoleScroll()" class="w-full h-96 bg-hub-900/90 text-slate-200 font-mono text-xs p-4 rounded-xl border border-hub-800 overflow-auto whitespace-pre-wrap leading-relaxed select-text space-y-1"></div>
+      </div>
+
+      <div class="p-3 bg-hub-950 border-t border-hub-800 flex items-center justify-between text-xs text-slate-400">
+        <span id="logScrollStatus">Auto-scroll: Enabled</span>
+        <button onclick="copyLogsToClipboard()" class="px-3.5 py-1.5 bg-hub-850 hover:bg-hub-800 text-slate-200 rounded-xl font-semibold transition">📋 Copy Logs</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: System Diagnostics Panel -->
+  <div id="diagnosticsModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🩺</span>
+          <h3 class="font-extrabold text-white text-base">System Diagnostics & Integrity Checks</h3>
+        </div>
+        <button onclick="closeDiagnosticsModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+      </div>
+      <div class="p-5 space-y-3 text-xs max-h-[75vh] overflow-y-auto" id="diagnosticsItemsContainer">
+        <div class="p-6 text-center text-slate-500">Running diagnostic checks...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 6: Typed Destructive Action Confirmation -->
+  <div id="typedConfirmModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-rose-900/60 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-rose-950/40 border-b border-rose-900/60 flex items-center justify-between">
+        <div class="flex items-center gap-2 text-rose-400">
+          <span class="text-xl">⚠️</span>
+          <h3 class="font-bold text-base">Confirm Destructive Action</h3>
+        </div>
+        <button onclick="closeTypedConfirmModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+      </div>
+      <div class="p-5 space-y-4 text-xs">
+        <p class="text-slate-300 leading-relaxed" id="confirmDescription">This action cannot be undone.</p>
+        <div>
+          <label class="block text-slate-400 font-medium mb-1">To confirm, type <code id="confirmTargetName" class="text-rose-400 font-mono font-bold"></code> below:</label>
+          <input type="text" id="confirmInput" oninput="checkTypedConfirmMatch()" placeholder="Type target name" class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:ring-1 focus:ring-rose-500 focus:outline-none" />
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-hub-800">
+          <button type="button" onclick="closeTypedConfirmModal()" class="px-4 py-2 bg-hub-850 hover:bg-hub-800 text-slate-300 font-semibold rounded-xl transition">Cancel</button>
+          <button type="button" id="confirmExecuteBtn" disabled onclick="executeTypedAction()" class="px-5 py-2 bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-rose-500 text-white font-bold rounded-xl shadow-lg transition">Delete Permanently</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DRAWER: Activity Log Timeline Drawer -->
+  <div id="activityDrawer" class="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-hub-900 border-l border-hub-800 shadow-2xl transform translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">⏱️</span>
+        <h3 class="font-extrabold text-white text-sm">Activity Timeline</h3>
+      </div>
+      <button onclick="toggleActivityDrawer()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+    </div>
+    <div id="activityTimelineList" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+      <div class="text-slate-500 text-center py-6">No recent activity logged.</div>
+    </div>
+  </div>
+
+  <!-- PHP Info Inspector Modal -->
+  <div id="phpInfoModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🐘</span>
+          <h3 class="font-bold text-white text-base">PHP Environment Inspector</h3>
+        </div>
+        <button onclick="closePhpInfoModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+      </div>
+      <div class="p-5 space-y-4 text-xs">
+        <div class="p-3 bg-hub-950 border border-hub-800 rounded-xl">
+          <div class="text-slate-400 text-[11px]">PHP Version:</div>
+          <div id="phpVerText" class="font-mono font-bold text-emerald-400 text-sm mt-0.5">Loading...</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 bg-hub-950 border border-hub-800 rounded-xl">
+            <div class="text-slate-400 text-[11px]">Memory Limit:</div>
+            <div id="phpMemLimitText" class="font-mono font-bold text-cyan-400 text-sm mt-0.5">--</div>
+          </div>
+          <div class="p-3 bg-hub-950 border border-hub-800 rounded-xl">
+            <div class="text-slate-400 text-[11px]">Unix Socket:</div>
+            <div class="font-mono text-xs text-indigo-300 font-semibold mt-0.5">/run/php-fpm/www.sock</div>
+          </div>
+        </div>
+        <div>
+          <div class="text-slate-300 font-semibold mb-2">Installed Critical Extensions:</div>
+          <div id="phpExtBadges" class="flex flex-wrap gap-2">
+            <span class="px-2.5 py-1 rounded-lg bg-hub-950 border border-hub-800 font-mono">Loading extensions...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MariaDB Credentials Modal -->
+  <div id="dbConfigModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🔑</span>
+          <h3 class="font-bold text-white text-base">MariaDB Root Password</h3>
+        </div>
+        <button onclick="closeDbConfigModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+      </div>
+      <form onsubmit="saveDbConfig(event)" class="p-5 space-y-4 text-xs">
+        <p class="text-slate-300 leading-relaxed">If your MariaDB <code class="text-emerald-400 font-mono">root</code> user has a password set, enter it below to connect directly.</p>
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">MariaDB User</label>
+          <input type="text" id="dbConfigUser" value="root" required class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">MariaDB Root Password</label>
+          <input type="password" id="dbConfigPass" placeholder="Enter root password" class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:outline-none" />
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-hub-800">
+          <button type="button" onclick="closeDbConfigModal()" class="px-4 py-2 bg-hub-850 hover:bg-hub-800 text-white font-semibold rounded-xl transition">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/30 transition">Verify & Save Credentials</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Laravel Artisan Helper Modal -->
+  <div id="artisanModal" class="fixed inset-0 z-50 bg-hub-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-hub-900 border border-hub-750 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div class="p-4 bg-hub-950 border-b border-hub-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🚩</span>
+          <h3 class="font-bold text-white text-base">Laravel Artisan Helper</h3>
+        </div>
+        <button onclick="closeArtisanModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded-lg hover:bg-hub-850 transition">✕</button>
+      </div>
+
+      <div class="p-5 space-y-4 text-xs">
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Select Laravel Project Directory</label>
+          <select id="artisanProjectSelect" class="w-full bg-hub-950 border border-hub-800 rounded-xl p-2.5 text-white font-mono focus:outline-none"></select>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Quick Artisan Actions</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="runArtisanCmd('migrate')" class="p-2 rounded-xl bg-hub-950 border border-hub-800 hover:border-emerald-500/50 text-slate-200 font-mono hover:text-emerald-300 text-left">php artisan migrate</button>
+            <button onclick="runArtisanCmd('db:seed')" class="p-2 rounded-xl bg-hub-950 border border-hub-800 hover:border-emerald-500/50 text-slate-200 font-mono hover:text-emerald-300 text-left">php artisan db:seed</button>
+            <button onclick="runArtisanCmd('cache:clear')" class="p-2 rounded-xl bg-hub-950 border border-hub-800 hover:border-emerald-500/50 text-slate-200 font-mono hover:text-emerald-300 text-left">cache:clear</button>
+            <button onclick="runArtisanCmd('config:clear')" class="p-2 rounded-xl bg-hub-950 border border-hub-800 hover:border-emerald-500/50 text-slate-200 font-mono hover:text-emerald-300 text-left">config:clear</button>
+            <button onclick="runArtisanCmd('route:list')" class="p-2 rounded-xl bg-hub-950 border border-hub-800 hover:border-emerald-500/50 text-slate-200 font-mono hover:text-emerald-300 text-left">route:list</button>
+            <button onclick="runArtisanCmd('key:generate')" class="p-2 rounded-xl bg-hub-950 border border-hub-800 hover:border-emerald-500/50 text-slate-200 font-mono hover:text-emerald-300 text-left">key:generate</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Artisan Console Output</label>
+          <pre id="artisanOutputConsole" class="w-full h-44 bg-hub-950 text-slate-200 font-mono text-xs p-3.5 rounded-xl border border-hub-800 overflow-auto whitespace-pre-wrap leading-relaxed">(Select project and click command button)</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Logic -->
+  <script>
+    let scannedProjectsCache = [];
+    let activeSitesCache = [];
+    let activeDbsCache = [];
+    let servicesState = { nginx: false, mariadb: false, 'php-fpm': false };
+    let activeConfigSiteName = '';
+    let currentLogType = 'error';
+    let sseMetricsEventSource = null;
+    let sseLogsEventSource = null;
+    let activityLog = [];
+    let pendingTypedAction = null;
+    let userHasScrolledLogs = false;
+    let rawLogLines = [];
+
+    // Keyboard Shortcuts (Ctrl+K for Search)
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        openSearchModal();
+      }
+      if (e.key === 'Escape') {
+        closeSearchModal();
+        closeConfigModal();
+        closeLogsModal();
+        closeDbConfigModal();
+        closeCreateSiteModal();
+        closePhpInfoModal();
+        closeArtisanModal();
+        closeDiagnosticsModal();
+        closeTypedConfirmModal();
+      }
+    });
+
+    // --- Toast & Timeline Logging ---
+    function logActivity(action, details, success = true) {
+      const entry = {
+        timestamp: new Date().toLocaleTimeString(),
+        action,
+        details,
+        success
+      };
+      activityLog.unshift(entry);
+      renderActivityTimeline();
+    }
+
+    function renderActivityTimeline() {
+      const container = document.getElementById('activityTimelineList');
+      if (!container) return;
+      if (activityLog.length === 0) {
+        container.innerHTML = '<div class="text-slate-500 text-center py-6">No recent activity logged.</div>';
+        return;
+      }
+      container.innerHTML = '';
+      activityLog.slice(0, 30).forEach(item => {
+        const div = document.createElement('div');
+        div.className = `p-3 rounded-xl border text-xs space-y-1 ${item.success ? 'bg-hub-950 border-hub-800' : 'bg-rose-950/40 border-rose-900/60'}`;
+        div.innerHTML = `
+          <div class="flex items-center justify-between font-semibold">
+            <span class="${item.success ? 'text-emerald-400' : 'text-rose-400'}">${item.success ? '✓' : '✕'} ${escapeHtml(item.action)}</span>
+            <span class="text-[10px] text-slate-500 font-mono">${item.timestamp}</span>
+          </div>
+          <p class="text-[11px] text-slate-300 leading-relaxed font-mono">${escapeHtml(item.details)}</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function toggleActivityDrawer() {
+      const drawer = document.getElementById('activityDrawer');
+      if (drawer.classList.contains('translate-x-full')) {
+        drawer.classList.remove('translate-x-full');
+      } else {
+        drawer.classList.add('translate-x-full');
+      }
+    }
+
+    function showToast(title, message, type = 'info', details = null, duration = 6000) {
+      logActivity(title, message, type !== 'error');
+
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const typeStyles = {
+        success: { border: 'border-emerald-500/50 bg-emerald-950/90 text-emerald-100', icon: '✅', titleColor: 'text-emerald-400' },
+        error: { border: 'border-rose-500/50 bg-rose-950/90 text-rose-100', icon: '🚨', titleColor: 'text-rose-400' },
+        warning: { border: 'border-amber-500/50 bg-amber-950/90 text-amber-100', icon: '⚠️', titleColor: 'text-amber-400' },
+        info: { border: 'border-blue-500/50 bg-blue-950/90 text-blue-100', icon: 'ℹ️', titleColor: 'text-blue-400' }
+      };
+
+      const style = typeStyles[type] || typeStyles.info;
+      const detailsHtml = details ? `
+        <details class="mt-2 text-[11px] font-mono bg-hub-950 p-2 rounded-xl border border-hub-800 max-h-36 overflow-auto">
+          <summary class="cursor-pointer text-slate-300 font-semibold hover:underline">View details</summary>
+          <pre class="mt-1 whitespace-pre-wrap text-rose-300 select-text">${escapeHtml(details)}</pre>
+        </details>
+      ` : '';
+
+      toast.className = `pointer-events-auto p-4 rounded-2xl border ${style.border} shadow-2xl backdrop-blur-md animate-slide-up flex items-start justify-between gap-3 text-xs w-full transition-all`;
+      toast.innerHTML = `
+        <div class="flex items-start gap-3 w-full">
+          <span class="text-base mt-0.5">${style.icon}</span>
+          <div class="flex-1 min-w-0">
+            <h4 class="font-bold ${style.titleColor} text-sm">${escapeHtml(title)}</h4>
+            <p class="mt-0.5 leading-relaxed">${escapeHtml(message)}</p>
+            ${detailsHtml}
+          </div>
+        </div>
+        <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-white font-bold text-sm px-1">✕</button>
+      `;
+
+      container.appendChild(toast);
+      if (duration > 0) {
+        setTimeout(() => {
+          if (toast && toast.parentElement) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(10px)';
+            setTimeout(() => toast.remove(), 300);
+          }
+        }, duration);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // --- SSE Real-time Stream Connection ---
+    function initMetricsSSE() {
+      if (sseMetricsEventSource) sseMetricsEventSource.close();
+      sseMetricsEventSource = new EventSource('/api/metrics/stream');
+
+      const statusBadge = document.getElementById('sseStatusBadge');
+
+      sseMetricsEventSource.onopen = () => {
+        statusBadge.classList.add('hidden');
+      };
+
+      sseMetricsEventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          document.getElementById('cpuVal').innerText = data.cpuLoad + '%';
+          document.getElementById('ramVal').innerText = `${data.usedMem} / ${data.totalMem} GB`;
+
+          servicesState.nginx = data.services.nginx;
+          servicesState.mariadb = data.services.mariadb;
+          servicesState['php-fpm'] = data.services.phpFpm;
+
+          updateNuancedServiceCard('nginxStatus', 'nginxPulse', 'nginxToggleBtn', data.services.nginx);
+          updateNuancedServiceCard('mariadbStatus', 'mariadbPulse', 'mariadbToggleBtn', data.services.mariadb);
+          updateNuancedServiceCard('phpStatus', 'phpPulse', 'phpToggleBtn', data.services.phpFpm);
+        } catch (e) {}
+      };
+
+      sseMetricsEventSource.onerror = () => {
+        statusBadge.classList.remove('hidden');
+        sseMetricsEventSource.close();
+        setTimeout(initMetricsSSE, 3000);
+      };
+    }
+
+    function updateNuancedServiceCard(badgeId, pulseId, btnId, active) {
+      const badge = document.getElementById(badgeId);
+      const pulse = document.getElementById(pulseId);
+      const btn = document.getElementById(btnId);
+
+      badge.innerText = active ? 'ONLINE' : 'STOPPED';
+      badge.className = `text-[11px] px-2.5 py-0.5 rounded-full font-bold ${active ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-400 border border-rose-500/40'}`;
+
+      if (pulse) pulse.className = active ? 'absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 animate-pulse-glow' : 'hidden';
+
+      if (btn) {
+        btn.innerText = active ? 'Stop' : 'Start';
+        btn.className = active 
+          ? 'bg-hub-850 hover:bg-hub-800 text-slate-200 px-3 py-1.5 text-xs rounded-xl font-semibold transition'
+          : 'bg-emerald-600/80 hover:bg-emerald-500 text-white px-3 py-1.5 text-xs rounded-xl font-semibold transition shadow-md shadow-emerald-900/30';
+      }
+    }
+
+    async function controlService(service, action, btnEl = null) {
+      if (btnEl) { btnEl.disabled = true; btnEl.innerText = 'Wait...'; }
+      try {
+        const res = await fetch('/api/service', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ service, action })
+        });
+        const data = await res.json();
+        if (data.success) showToast('Service Updated', data.message, 'success');
+        else showToast('Service Action Failed', data.error, 'error');
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    async function toggleService(service, btnEl = null) {
+      const isCurrentlyActive = servicesState[service];
+      await controlService(service, isCurrentlyActive ? 'stop' : 'start', btnEl);
+    }
+
+    // --- Scanned Projects List ---
+    async function loadScannedProjects() {
+      try {
+        const res = await fetch('/api/scanned-projects');
+        const projects = await res.json();
+        const container = document.getElementById('projectsListContainer');
+        const artisanPicker = document.getElementById('artisanProjectSelect');
+
+        if (projects.error || !Array.isArray(projects)) return;
+        
+        scannedProjectsCache = projects;
+        container.innerHTML = '';
+        if (artisanPicker) artisanPicker.innerHTML = '';
+
+        if (projects.length === 0) {
+          container.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">No user repositories found in ~/Projects</div>';
+          return;
+        }
+
+        projects.forEach(p => {
+          if (artisanPicker && (p.framework.includes('Laravel') || p.suggestedType === 'laravel')) {
+            const aOpt = document.createElement('option');
+            aOpt.value = p.fullPath;
+            aOpt.innerText = `🚀 ${p.name} (${p.fullPath})`;
+            artisanPicker.appendChild(aOpt);
+          }
+
+          const card = document.createElement('div');
+          card.className = 'p-3.5 rounded-xl bg-hub-950/80 border border-hub-800 hover:border-hub-700 hover:scale-[1.01] transition-all duration-200 flex items-center justify-between gap-3 group';
+          
+          let icon = '📁';
+          if (p.framework.includes('Laravel')) icon = '🚀';
+          else if (p.framework.includes('Next') || p.framework.includes('Node')) icon = '⚡';
+          else if (p.framework.includes('Vite') || p.framework.includes('React')) icon = '📦';
+          else if (p.framework.includes('WordPress')) icon = '📰';
+
+          card.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="text-xl">${icon}</span>
+              <div class="min-w-0">
+                <div class="font-bold text-white text-xs truncate group-hover:text-emerald-400 transition">${escapeHtml(p.name)}</div>
+                <div class="text-[10px] text-slate-400 font-mono truncate">${escapeHtml(p.fullPath)}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-hub-850 text-emerald-400 border border-hub-750 font-mono">${escapeHtml(p.framework)}</span>
+              <button onclick="deployProjectShortcut('${p.name}')" class="text-[11px] font-semibold px-2.5 py-1 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded-lg transition shadow-sm">
+                + Site
+              </button>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+      } catch (err) {}
+    }
+
+    function deployProjectShortcut(folderName) {
+      openCreateSiteModal();
+      const proj = scannedProjectsCache.find(p => p.name === folderName);
+      if (proj) {
+        document.getElementById('siteName').value = proj.name;
+        document.getElementById('domain').value = `${proj.name}.local`;
+        document.getElementById('rootPath').value = proj.fullPath;
+        document.getElementById('siteType').value = proj.suggestedType;
+      }
+    }
+
+    // --- Virtual Hosts Table & 1-Click Rollback ---
+    async function loadSites() {
+      try {
+        const res = await fetch('/api/sites');
+        const sites = await res.json();
+        const tbody = document.getElementById('sitesTableBody');
+        tbody.innerHTML = '';
+
+        if (sites.error) {
+          tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-rose-400 font-semibold">${escapeHtml(sites.error)}</td></tr>`;
+          showToast('Failed to Load Sites', sites.error, 'error', sites.details);
+          return;
+        }
+
+        activeSitesCache = sites;
+
+        if (!Array.isArray(sites) || sites.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" class="p-6 text-center text-slate-500">No virtual hosts configured in /etc/nginx/conf.d/</td></tr>';
+          return;
+        }
+
+        sites.forEach(s => {
+          const tr = document.createElement('tr');
+          tr.className = "hover:bg-hub-850/60 transition";
+
+          tr.innerHTML = `
+            <td class="p-3.5 font-mono font-semibold text-white">${escapeHtml(s.name)}</td>
+            <td class="p-3.5">
+              <span class="text-[11px] px-2.5 py-0.5 rounded-full font-bold ${s.enabled ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30' : 'bg-hub-850 text-slate-400 border border-hub-750'}">
+                ${s.enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </td>
+            <td class="p-3.5 text-right space-x-1">
+              <button onclick="openConfigModal('${s.name}')" class="text-xs px-2.5 py-1 bg-hub-800 hover:bg-hub-750 text-slate-200 rounded-lg transition" title="Edit Raw Conf">
+                ✏️ Edit
+              </button>
+              <button onclick="fixPermissionsForSite('${s.name}')" class="text-xs px-2.5 py-1 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/40 rounded-lg transition" title="Fix Perms & SELinux">
+                ⚡ Perms
+              </button>
+              <button onclick="toggleSite('${s.name}', ${!s.enabled}, this)" class="text-xs px-2.5 py-1 bg-hub-800 hover:bg-hub-750 text-slate-200 rounded-lg transition">
+                ${s.enabled ? 'Disable' : 'Enable'}
+              </button>
+              <button onclick="requestTypedSiteDelete('${s.name}')" class="text-xs px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/40 rounded-lg transition">
+                🗑️
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        showToast('Failed to Load Sites', err.message, 'error');
+      }
+    }
+
+    function openCreateSiteModal() {
+      document.getElementById('createSiteModal').classList.remove('hidden');
+      document.getElementById('createSiteModal').classList.add('flex');
+    }
+
+    function closeCreateSiteModal() {
+      document.getElementById('createSiteModal').classList.add('hidden');
+      document.getElementById('createSiteModal').classList.remove('flex');
+    }
+
+    async function createSite(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitSite');
+      btn.disabled = true;
+      btn.innerText = 'Creating & Testing...';
+
+      const payload = {
+        siteName: document.getElementById('siteName').value,
+        domain: document.getElementById('domain').value,
+        siteType: document.getElementById('siteType').value,
+        rootPath: document.getElementById('rootPath').value,
+        port: document.getElementById('port').value,
+        enableSsl: document.getElementById('toggleEnableSsl').checked,
+        autoHosts: document.getElementById('toggleAutoHosts').checked,
+      };
+
+      try {
+        const res = await fetch('/api/sites/create', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.error) showToast('Nginx Creation Failed', data.error, 'error', data.details);
+        else {
+          showToast('Site Created & Active', data.message, 'success');
+          closeCreateSiteModal();
+          loadSites();
+        }
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Generate & Reload Nginx';
+      }
+    }
+
+    async function toggleSite(siteName, enable, btnEl = null) {
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const res = await fetch('/api/sites/toggle', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ siteName, enable })
+        });
+        const data = await res.json();
+        if (data.error) showToast('Toggle Failed', data.error, 'error', data.details);
+        else {
+          showToast('Site Toggled', data.message, 'success');
+          loadSites();
+        }
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    function requestTypedSiteDelete(siteName) {
+      openTypedConfirmModal(
+        `Are you sure you want to permanently delete the Nginx configuration file /etc/nginx/conf.d/${siteName}?`,
+        siteName,
+        async () => {
+          const res = await fetch('/api/sites/' + siteName, { method: 'DELETE' });
+          const data = await res.json();
+          if (data.error) showToast('Delete Failed', data.error, 'error');
+          else {
+            showToast('Site Deleted', data.message, 'success');
+            loadSites();
+          }
+        }
+      );
+    }
+
+    async function fixPermissionsForSite(siteName) {
+      const rootPath = document.getElementById('rootPath').value || `/home/sdev/Projects/${siteName.replace(/\.conf(\.disabled)?$/, '')}`;
+      const pathInput = prompt('Enter Project Root Path for Storage/Cache Permission Fix:', rootPath);
+      if (!pathInput) return;
+
+      try {
+        const res = await fetch('/api/sites/fix-permissions', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ rootPath: pathInput })
+        });
+        const data = await res.json();
+        if (data.success) showToast('Permissions Applied', data.message, 'success');
+        else showToast('Permission Fix Failed', data.error, 'error', data.details);
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      }
+    }
+
+    // --- Nginx Config Editor & Rollback Modal ---
+    async function openConfigModal(name) {
+      activeConfigSiteName = name;
+      document.getElementById('modalConfigTitle').innerText = `Edit ${name}`;
+      document.getElementById('modalConfigPath').innerText = `/etc/nginx/conf.d/${name}`;
+      document.getElementById('modalSyntaxStatus').className = 'hidden';
+      document.getElementById('configBackupsPanel').className = 'hidden';
+
+      try {
+        const res = await fetch(`/api/sites/config/${name}`);
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('configEditorTextarea').value = data.content;
+          document.getElementById('configModal').classList.remove('hidden');
+          document.getElementById('configModal').classList.add('flex');
+        } else showToast('Read Failed', data.error, 'error');
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      }
+    }
+
+    function closeConfigModal() {
+      document.getElementById('configModal').classList.add('hidden');
+      document.getElementById('configModal').classList.remove('flex');
+    }
+
+    async function openConfigBackupsList() {
+      const panel = document.getElementById('configBackupsPanel');
+      const listEl = document.getElementById('backupsListItems');
+
+      try {
+        const res = await fetch(`/api/sites/backups/${activeConfigSiteName}`);
+        const backups = await res.json();
+        listEl.innerHTML = '';
+
+        if (!Array.isArray(backups) || backups.length === 0) {
+          listEl.innerHTML = '<div class="text-slate-500">No backups stored yet. Backups are created automatically on every edit.</div>';
+        } else {
+          backups.forEach(b => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center justify-between p-2 rounded-lg bg-hub-900 border border-hub-800 hover:border-cyan-500/40';
+            div.innerHTML = `
+              <span class="text-slate-300 text-[11px]">${escapeHtml(b)}</span>
+              <button onclick="rollbackToBackup('${b}')" class="px-2 py-1 bg-cyan-600/80 hover:bg-cyan-500 text-white rounded font-bold text-[10px]">Rollback</button>
+            `;
+            listEl.appendChild(div);
+          });
+        }
+        panel.classList.remove('hidden');
+      } catch (err) {
+        showToast('Backup Error', err.message, 'error');
+      }
+    }
+
+    async function rollbackToBackup(backupFile) {
+      if (!confirm(`Rollback ${activeConfigSiteName} to backup file ${backupFile}?`)) return;
+      try {
+        const res = await fetch('/api/sites/config/rollback', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ siteName: activeConfigSiteName, backupFile })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Rollback Complete', data.message, 'success');
+          openConfigModal(activeConfigSiteName);
+        } else showToast('Rollback Failed', data.error, 'error', data.details);
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      }
+    }
+
+    async function saveConfigModal(btnEl = null) {
+      if (btnEl) btnEl.disabled = true;
+      const content = document.getElementById('configEditorTextarea').value;
+      const statusBox = document.getElementById('modalSyntaxStatus');
+      statusBox.className = 'p-3 rounded-xl text-xs font-mono border bg-hub-950 text-slate-300 border-hub-800 block';
+      statusBox.innerText = 'Validating Nginx syntax with nginx -t...';
+
+      try {
+        const res = await fetch('/api/sites/config/save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ siteName: activeConfigSiteName, content })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          statusBox.className = 'p-3 rounded-xl text-xs font-mono border bg-emerald-950/80 text-emerald-300 border-emerald-500/40 block';
+          statusBox.innerText = '✅ ' + data.message;
+          showToast('Config Saved', data.message, 'success');
+          loadSites();
+          setTimeout(closeConfigModal, 1000);
+        } else {
+          statusBox.className = 'p-3 rounded-xl text-xs font-mono border bg-rose-950/80 text-rose-300 border-rose-500/40 block whitespace-pre-wrap';
+          statusBox.innerText = '❌ ' + data.error + '\n\n' + (data.details || '');
+          showToast('Syntax Test Failed', data.error, 'error', data.details);
+        }
+      } catch (err) {
+        statusBox.className = 'p-3 rounded-xl text-xs font-mono border bg-rose-950/80 text-rose-300 border-rose-500/40 block';
+        statusBox.innerText = '❌ Error: ' + err.message;
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    // --- MariaDB Operations & Typed Deletion ---
+    function openDbConfigModal() {
+      document.getElementById('dbConfigModal').classList.remove('hidden');
+      document.getElementById('dbConfigModal').classList.add('flex');
+    }
+
+    function closeDbConfigModal() {
+      document.getElementById('dbConfigModal').classList.add('hidden');
+      document.getElementById('dbConfigModal').classList.remove('flex');
+    }
+
+    async function saveDbConfig(e) {
+      e.preventDefault();
+      const user = document.getElementById('dbConfigUser').value;
+      const pass = document.getElementById('dbConfigPass').value;
+
+      try {
+        const res = await fetch('/api/db/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ user, pass })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Credentials Verified', data.message, 'success');
+          closeDbConfigModal();
+          loadDatabases();
+        } else showToast('Authentication Failed', data.error, 'error', data.details);
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      }
+    }
+
+    async function createDb(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnCreateDb');
+      btn.disabled = true;
+
+      const payload = {
+        dbName: document.getElementById('dbName').value,
+        dbUser: document.getElementById('dbUser').value,
+        dbPass: document.getElementById('dbPass').value,
+      };
+
+      try {
+        const res = await fetch('/api/db/create', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Database Created', data.message, 'success');
+          document.getElementById('dbName').value = '';
+          document.getElementById('dbUser').value = '';
+          document.getElementById('dbPass').value = '';
+          loadDatabases();
+        } else showToast('Database Creation Failed', data.error, 'error', data.details, 10000);
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadDatabases() {
+      try {
+        const res = await fetch('/api/db/list');
+        const dbs = await res.json();
+        const container = document.getElementById('dbListContainer');
+        container.innerHTML = '';
+
+        if (dbs.error) {
+          container.innerHTML = `
+            <li class="p-4 text-center flex flex-col items-center justify-center gap-2">
+              <span class="text-rose-400 font-semibold text-xs">⚠️ ${escapeHtml(dbs.error)}</span>
+              <button onclick="openDbConfigModal()" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+                <span>🔑</span> Enter MariaDB Root Password
+              </button>
+            </li>
+          `;
+          return;
+        }
+
+        activeDbsCache = dbs;
+
+        if (!Array.isArray(dbs) || dbs.length === 0) {
+          container.innerHTML = '<li class="p-3.5 text-slate-500 text-center">No user databases found</li>';
+          return;
+        }
+
+        dbs.forEach(db => {
+          const li = document.createElement('li');
+          li.className = 'p-3 flex items-center justify-between hover:bg-hub-850/50 transition';
+          li.innerHTML = `
+            <div class="flex items-center gap-2 font-mono font-semibold text-white">
+              <span>🗄️</span>
+              <span>${escapeHtml(db.name)}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <a href="/api/db/export/${db.name}" download class="text-[11px] px-2.5 py-1 bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 border border-blue-800/40 rounded-lg transition" title="Export .sql backup">
+                📥 SQL Backup
+              </a>
+              <button onclick="requestTypedDbDrop('${db.name}')" class="text-[11px] px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/40 rounded-lg transition">
+                Drop
+              </button>
+            </div>
+          `;
+          container.appendChild(li);
+        });
+      } catch (err) {
+        showToast('DB List Error', err.message, 'error');
+      }
+    }
+
+    function requestTypedDbDrop(dbName) {
+      openTypedConfirmModal(
+        `Are you sure you want to permanently DROP the database "${dbName}"? All tables and data will be lost forever.`,
+        dbName,
+        async () => {
+          const res = await fetch('/api/db/' + dbName, { method: 'DELETE' });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Database Dropped', data.message, 'success');
+            loadDatabases();
+          } else showToast('Drop Failed', data.error, 'error', data.details, 10000);
+        }
+      );
+    }
+
+    // --- Typed Confirmation Modal Logic ---
+    function openTypedConfirmModal(description, targetName, onConfirmAction) {
+      document.getElementById('confirmDescription').innerText = description;
+      document.getElementById('confirmTargetName').innerText = targetName;
+      document.getElementById('confirmInput').value = '';
+      document.getElementById('confirmExecuteBtn').disabled = true;
+      pendingTypedAction = onConfirmAction;
+
+      document.getElementById('typedConfirmModal').classList.remove('hidden');
+      document.getElementById('typedConfirmModal').classList.add('flex');
+      document.getElementById('confirmInput').focus();
+    }
+
+    function closeTypedConfirmModal() {
+      document.getElementById('typedConfirmModal').classList.add('hidden');
+      document.getElementById('typedConfirmModal').classList.remove('flex');
+      pendingTypedAction = null;
+    }
+
+    function checkTypedConfirmMatch() {
+      const inputVal = document.getElementById('confirmInput').value.trim();
+      const targetVal = document.getElementById('confirmTargetName').innerText.trim();
+      document.getElementById('confirmExecuteBtn').disabled = (inputVal !== targetVal);
+    }
+
+    async function executeTypedAction() {
+      if (pendingTypedAction) {
+        const actionFn = pendingTypedAction;
+        closeTypedConfirmModal();
+        await actionFn();
+      }
+    }
+
+    // --- System Diagnostics Modal ---
+    async function openDiagnosticsModal() {
+      document.getElementById('diagnosticsModal').classList.remove('hidden');
+      document.getElementById('diagnosticsModal').classList.add('flex');
+      const container = document.getElementById('diagnosticsItemsContainer');
+      container.innerHTML = '<div class="p-6 text-center text-slate-500">Running diagnostic checks...</div>';
+
+      try {
+        const res = await fetch('/api/diagnostics');
+        const diagnostics = await res.json();
+        container.innerHTML = '';
+
+        diagnostics.forEach(item => {
+          const card = document.createElement('div');
+          const isOk = item.status === 'ok';
+          card.className = `p-4 rounded-xl border ${isOk ? 'bg-hub-950 border-hub-800' : 'bg-rose-950/40 border-rose-900/60'} space-y-1.5`;
+          card.innerHTML = `
+            <div class="flex items-center justify-between font-bold">
+              <span class="${isOk ? 'text-emerald-400' : 'text-rose-400'}">${isOk ? '✓' : '⚠️'} ${escapeHtml(item.title)}</span>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-hub-850 text-slate-400 border border-hub-750">${escapeHtml(item.category)}</span>
+            </div>
+            <p class="text-[11px] text-slate-300 leading-relaxed font-mono">${escapeHtml(item.detail)}</p>
+          `;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="p-4 text-rose-400 text-center">Failed to run diagnostics: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function closeDiagnosticsModal() {
+      document.getElementById('diagnosticsModal').classList.add('hidden');
+      document.getElementById('diagnosticsModal').classList.remove('flex');
+    }
+
+    // --- Systemd Supervisor Unit Setup Modal / Toast ---
+    async function fetchSystemdSetup() {
+      try {
+        const res = await fetch('/api/systemd/unit');
+        const data = await res.json();
+        const instructions = data.instructions.join('\n');
+        alert(`Systemd User Supervisor Service:\n\nUnit file written to:\n${data.unitPath}\n\nTo enable auto-recovery on boot:\n${instructions}`);
+      } catch (err) {
+        showToast('Error', err.message, 'error');
+      }
+    }
+
+    // --- Live SSE Stream Log Console with Search & Highlighting ---
+    function openLogsModal() {
+      document.getElementById('logsModal').classList.remove('hidden');
+      document.getElementById('logsModal').classList.add('flex');
+      initLogsSSE();
+    }
+
+    function closeLogsModal() {
+      document.getElementById('logsModal').classList.add('hidden');
+      document.getElementById('logsModal').classList.remove('flex');
+      if (sseLogsEventSource) {
+        sseLogsEventSource.close();
+        sseLogsEventSource = null;
+      }
+    }
+
+    function switchLogTab(type) {
+      currentLogType = type;
+      const tabErr = document.getElementById('tabErrorLog');
+      const tabAcc = document.getElementById('tabAccessLog');
+
+      if (type === 'error') {
+        tabErr.className = 'px-3 py-1.5 rounded-lg font-semibold bg-rose-950/80 text-rose-400 border border-rose-800/50';
+        tabAcc.className = 'px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white';
+        document.getElementById('logPathDisplay').innerText = '/var/log/nginx/error.log';
+      } else {
+        tabAcc.className = 'px-3 py-1.5 rounded-lg font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/50';
+        tabErr.className = 'px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white';
+        document.getElementById('logPathDisplay').innerText = '/var/log/nginx/access.log';
+      }
+      initLogsSSE();
+    }
+
+    function initLogsSSE() {
+      if (sseLogsEventSource) sseLogsEventSource.close();
+      rawLogLines = [];
+      document.getElementById('logOutputConsole').innerHTML = '';
+
+      sseLogsEventSource = new EventSource(`/api/logs/stream?type=${currentLogType}&lines=50`);
+
+      sseLogsEventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.line) {
+            rawLogLines.push(data.line);
+            if (rawLogLines.length > 500) rawLogLines.shift();
+            filterLogsOutput();
+          }
+        } catch (e) {}
+      };
+    }
+
+    function filterLogsOutput() {
+      const q = (document.getElementById('logSearchInput').value || '').toLowerCase();
+      const consoleEl = document.getElementById('logOutputConsole');
+      consoleEl.innerHTML = '';
+
+      const filtered = rawLogLines.filter(line => !q || line.toLowerCase().includes(q));
+
+      filtered.forEach(line => {
+        const div = document.createElement('div');
+        let styleClass = 'text-slate-300';
+        
+        if (line.includes('[error]') || line.includes(' 500 ') || line.includes('failed')) {
+          styleClass = 'text-rose-400 font-semibold';
+        } else if (line.includes('[warn]') || line.includes(' 404 ')) {
+          styleClass = 'text-amber-400';
+        } else if (line.includes(' 200 ') || line.includes(' 301 ')) {
+          styleClass = 'text-emerald-400';
+        }
+
+        div.className = styleClass;
+        div.innerText = line;
+        consoleEl.appendChild(div);
+      });
+
+      if (!userHasScrolledLogs) {
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+    }
+
+    function handleLogConsoleScroll() {
+      const consoleEl = document.getElementById('logOutputConsole');
+      const isAtBottom = (consoleEl.scrollHeight - consoleEl.scrollTop - consoleEl.clientHeight) < 25;
+      userHasScrolledLogs = !isAtBottom;
+      document.getElementById('logScrollStatus').innerText = userHasScrolledLogs ? 'Auto-scroll: Paused (scrolled up)' : 'Auto-scroll: Enabled';
+    }
+
+    function copyLogsToClipboard() {
+      const text = rawLogLines.join('\n');
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('Copied', 'Log output copied to clipboard!', 'success');
+      });
+    }
+
+    // --- Laravel Artisan Helper Modal ---
+    function openArtisanModal() {
+      document.getElementById('artisanModal').classList.remove('hidden');
+      document.getElementById('artisanModal').classList.add('flex');
+    }
+
+    function closeArtisanModal() {
+      document.getElementById('artisanModal').classList.add('hidden');
+      document.getElementById('artisanModal').classList.remove('flex');
+    }
+
+    async function runArtisanCmd(command) {
+      const rootPath = document.getElementById('artisanProjectSelect').value;
+      const consoleEl = document.getElementById('artisanOutputConsole');
+
+      if (!rootPath) {
+        showToast('Selection Required', 'Please select a Laravel project folder first.', 'warning');
+        return;
+      }
+
+      consoleEl.innerText = `Running php artisan ${command}...`;
+
+      try {
+        const res = await fetch('/api/laravel/artisan', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ rootPath, command })
+        });
+        const data = await res.json();
+        consoleEl.innerText = data.output || '(No output returned)';
+      } catch (err) {
+        consoleEl.innerText = `Error: ${err.message}`;
+      }
+    }
+
+    // --- PHP Info Modal ---
+    async function openPhpInfoModal() {
+      document.getElementById('phpInfoModal').classList.remove('hidden');
+      document.getElementById('phpInfoModal').classList.add('flex');
+
+      try {
+        const res = await fetch('/api/php/info');
+        const data = await res.json();
+        
+        document.getElementById('phpVerText').innerText = data.version || 'PHP 8.x';
+        document.getElementById('phpMemLimitText').innerText = data.memoryLimit || 'Unknown';
+
+        const badgesContainer = document.getElementById('phpExtBadges');
+        badgesContainer.innerHTML = '';
+
+        const exts = [
+          { name: 'pdo_mysql', active: data.hasPdoMysql },
+          { name: 'mbstring', active: data.hasMbstring },
+          { name: 'gd', active: data.hasGd },
+          { name: 'xml', active: data.hasXml },
+          { name: 'curl', active: data.hasCurl },
+          { name: 'zip', active: data.hasZip },
+        ];
+
+        exts.forEach(e => {
+          const badge = document.createElement('span');
+          badge.className = `px-2.5 py-1 rounded-xl text-xs font-mono font-semibold ${e.active ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-400 border border-rose-500/40'}`;
+          badge.innerText = `${e.active ? '✓' : '✗'} ${e.name}`;
+          badgesContainer.appendChild(badge);
+        });
+      } catch (err) {}
+    }
+
+    function closePhpInfoModal() {
+      document.getElementById('phpInfoModal').classList.add('hidden');
+      document.getElementById('phpInfoModal').classList.remove('flex');
+    }
+
+    // --- Raycast Global Search Modal (Ctrl+K) ---
+    function openSearchModal() {
+      document.getElementById('searchModal').classList.remove('hidden');
+      document.getElementById('searchModal').classList.add('flex');
+      document.getElementById('searchInput').focus();
+    }
+
+    function closeSearchModal() {
+      document.getElementById('searchModal').classList.add('hidden');
+      document.getElementById('searchModal').classList.remove('flex');
+    }
+
+    function filterGlobalSearch(query) {
+      const q = query.toLowerCase().trim();
+      const container = document.getElementById('searchResultsContainer');
+      container.innerHTML = '';
+
+      if (!q) {
+        container.innerHTML = '<p class="text-slate-500 text-center py-4">Type to search sites, databases, or project folders...</p>';
+        return;
+      }
+
+      let matches = [];
+
+      activeSitesCache.forEach(s => {
+        if (s.name.toLowerCase().includes(q)) matches.push({ type: 'Site', name: s.name, action: () => { closeSearchModal(); openConfigModal(s.name); } });
+      });
+
+      activeDbsCache.forEach(d => {
+        if (d.name.toLowerCase().includes(q)) matches.push({ type: 'Database', name: d.name, action: () => { closeSearchModal(); } });
+      });
+
+      scannedProjectsCache.forEach(p => {
+        if (p.name.toLowerCase().includes(q)) matches.push({ type: 'Project', name: `${p.name} (${p.framework})`, action: () => { closeSearchModal(); deployProjectShortcut(p.name); } });
+      });
+
+      if (matches.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-center py-4">No matching sites, databases, or projects found.</p>';
+        return;
+      }
+
+      matches.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'p-2.5 rounded-xl hover:bg-hub-850 cursor-pointer flex items-center justify-between transition';
+        div.onclick = m.action;
+        div.innerHTML = `
+          <span class="font-mono text-white font-semibold">${escapeHtml(m.name)}</span>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-hub-800 font-bold text-emerald-400 border border-hub-750">${m.type}</span>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // --- Init ---
+    initMetricsSSE();
+    loadSites();
+    loadScannedProjects();
+    loadDatabases();
+  </script>
+</body>
+</html>
