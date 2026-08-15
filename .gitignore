@@ -1,0 +1,34 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Sensitive local configuration & database credentials
+.db_config.json
+
+# Local SSL certificates and private keys
+ssl/
+*.crt
+*.key
+
+# Environment and secret files
+.env
+.env.local
+.env.production
+.env.development
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Temporary files & logs
+*.log
+/tmp/
