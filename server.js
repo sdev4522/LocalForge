@@ -7,7 +7,10 @@ const si = require('systeminformation');
 
 const app = express();
 const PORT = 4000;
-const NGINX_CONF_DIR = '/etc/nginx/conf.d';
+const { resolvePlatformConfig } = require('./platform');
+const platformConfig = resolvePlatformConfig();
+
+const NGINX_CONF_DIR = platformConfig.nginxConfStyle.confDir;
 const NGINX_BACKUP_DIR = path.join(NGINX_CONF_DIR, '.backups');
 const NGINX_SSL_DIR = path.join(__dirname, 'ssl');
 const USER_HOME = os.homedir();
@@ -1089,6 +1092,17 @@ app.get('/api/logs', async (req, res) => {
   res.json({ success: true, logType: type, logPath, content: result.output });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 LocalForge live at http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ Error: Port ${PORT} is already in use by another process.`);
+    console.error(`Please stop the existing process or run \`localforge stop\` before launching.\n`);
+    process.exit(1);
+  } else {
+    console.error(`\n❌ Server error: ${err.message}\n`);
+    process.exit(1);
+  }
 });

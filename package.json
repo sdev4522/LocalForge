@@ -1,8 +1,17 @@
 {
-  "name": "nginx-panel",
-  "version": "1.3.0",
-  "description": "LocalForge — Local Development Stack Manager for Fedora Linux",
+  "name": "localforge",
+  "version": "1.0.0",
+  "description": "LocalForge — Local Development Stack Manager for Fedora, Ubuntu, and Arch Linux",
   "main": "server.js",
+  "bin": {
+    "localforge": "./bin/localforge"
+  },
+  "license": "MIT",
+  "author": "sdev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/localforge/localforge"
+  },
   "scripts": {
     "start": "node server.js",
     "server": "node server.js",
@@ -10,9 +19,16 @@
     "dev": "concurrently -n \"backend,frontend\" -c \"cyan,magenta\" \"node server.js\" \"cd frontend && npm run dev\"",
     "build:ui": "cd frontend && npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "localforge",
+    "nginx",
+    "mariadb",
+    "php-fpm",
+    "laravel",
+    "fedora",
+    "ubuntu",
+    "arch"
+  ],
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",

@@ -1,0 +1,354 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const http = require('http');
+const readline = require('readline');
+const { spawn, execSync } = require('child_process');
+const { resolvePlatformConfig } = require('../platform');
+
+const CONFIG_DIR = path.join(os.homedir(), '.localforge');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const PID_FILE = path.join(CONFIG_DIR, 'localforge.pid');
+const SERVER_FILE = path.join(__dirname, '..', 'server.js');
+const PORT = 4000;
+
+function ensureConfigDir() {
+  if (!fs.existsSync(CONFIG_DIR)) {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  }
+}
+
+function readConfig() {
+  ensureConfigDir();
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    } catch (e) {}
+  }
+  return {};
+}
+
+function writeConfig(data) {
+  ensureConfigDir();
+  const existing = readConfig();
+  const updated = { ...existing, ...data };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf8');
+  return updated;
+}
+
+function checkHealth(timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://localhost:${PORT}/api/health`, { timeout: timeoutMs }, (res) => {
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function openBrowser(url) {
+  try {
+    if (process.platform === 'linux') {
+      spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'darwin') {
+      spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', url], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch (e) {}
+}
+
+function askQuestion(query, hidden = false) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    if (hidden) {
+      process.stdout.write(query);
+      let input = '';
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on('data', function charHandler(char) {
+        char = char.toString('utf8');
+        if (char === '\n' || char === '\r' || char === '\u0004') {
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          process.stdin.removeListener('data', charHandler);
+          process.stdout.write('\n');
+          rl.close();
+          resolve(input);
+        } else if (char === '\u0003') {
+          process.exit(1);
+        } else if (char === '\u007f' || char === '\b') {
+          if (input.length > 0) {
+            input = input.slice(0, -1);
+            process.stdout.write('\b \b');
+          }
+        } else {
+          input += char;
+          process.stdout.write('*');
+        }
+      });
+    } else {
+      rl.question(query, (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    }
+  });
+}
+
+async function runSetupWizard() {
+  console.log('\n==================================================');
+  console.log('⚡ LocalForge First-Run Multi-Distro Setup Wizard');
+  console.log('==================================================');
+
+  const platformConfig = resolvePlatformConfig();
+  console.log(`Detected Distro Family: ${platformConfig.distroFamily.toUpperCase()}`);
+  console.log(`Package Manager:        ${platformConfig.packageManager}`);
+  console.log(`PHP-FPM Socket:         ${platformConfig.phpFpmSocket}`);
+  console.log(`Nginx Conf Style:       ${platformConfig.nginxConfStyle.style}\n`);
+
+  if (platformConfig.missingBinaries.length > 0) {
+    const pkgCmd = platformConfig.packageManager === 'pacman'
+      ? `sudo pacman -S ${platformConfig.missingBinaries.join(' ')}`
+      : platformConfig.packageManager === 'apt'
+      ? `sudo apt install ${platformConfig.missingBinaries.join(' ')}`
+      : `sudo dnf install ${platformConfig.missingBinaries.join(' ')}`;
+
+    console.error(`❌ Missing required stack binaries: ${platformConfig.missingBinaries.join(', ')}`);
+    console.error(`Install missing packages using your package manager:\n  ${pkgCmd}\n`);
+    return false;
+  }
+
+  console.log('LocalForge requires passwordless sudo access for system service control');
+  console.log('(nginx, mariadb, php-fpm) and configuration management.\n');
+
+  let sudoConfirmed = false;
+  while (!sudoConfirmed) {
+    const answer = await askQuestion('Proceed to setup passwordless sudo rule for LocalForge? [Y/n]: ');
+    if (answer.toLowerCase() === 'n') {
+      console.log('⚠️ Setup aborted. Sudo configuration is required to run LocalForge.');
+      return false;
+    }
+
+    try {
+      console.log('Writing sudoers configuration to /etc/sudoers.d/localforge...');
+      const bins = platformConfig.binaryPaths;
+      const sudoBinList = Object.values(bins).join(', ');
+      const currentUser = os.userInfo().username || 'sdev';
+      const sudoersContent = `${currentUser} ALL=(ALL) NOPASSWD: ${sudoBinList}\n`;
+
+      execSync(`sudo tee /etc/sudoers.d/localforge > /dev/null << 'EOF'\n${sudoersContent}EOF\nsudo chmod 0440 /etc/sudoers.d/localforge`);
+      console.log('✅ Sudoers rule created successfully.');
+      sudoConfirmed = true;
+    } catch (e) {
+      console.log(`❌ Failed to create sudoers rule: ${e.message}`);
+      const retry = await askQuestion('Would you like to retry this step? [Y/n]: ');
+      if (retry.toLowerCase() === 'n') return false;
+    }
+  }
+
+  let dbConfigured = false;
+  while (!dbConfigured) {
+    console.log('\nConfiguring MariaDB Root Credentials...');
+    const dbPass = await askQuestion('Enter MariaDB root password (leave empty if none): ', true);
+
+    try {
+      const dbBin = platformConfig.binaryPaths.mariadb || platformConfig.binaryPaths.mysql || 'mariadb';
+      const testCmd = dbPass
+        ? `${dbBin} -u root -p"${dbPass.replace(/"/g, '\\"')}" -e "SELECT 1;" 2>/dev/null`
+        : `${dbBin} -u root -e "SELECT 1;" 2>/dev/null`;
+
+      execSync(testCmd);
+      const dbConfigPath = path.join(__dirname, '..', '.db_config.json');
+      fs.writeFileSync(dbConfigPath, JSON.stringify({ user: 'root', pass: dbPass }), 'utf8');
+      console.log('✅ MariaDB connection verified & credentials saved.');
+      dbConfigured = true;
+    } catch (e) {
+      console.log('⚠️ Could not connect to MariaDB with the provided credentials.');
+      const retry = await askQuestion('Would you like to retry MariaDB setup? [Y/n]: ');
+      if (retry.toLowerCase() === 'n') {
+        console.log('Skipping MariaDB verification for now.');
+        dbConfigured = true;
+      }
+    }
+  }
+
+  writeConfig({
+    setupComplete: true,
+    setupTimestamp: new Date().toISOString(),
+    platform: platformConfig,
+  });
+
+  console.log('\n🎉 Setup completed! ~/.localforge/config.json updated.\n');
+  return true;
+}
+
+async function startServer() {
+  const isAlive = await checkHealth(1000);
+  if (isAlive) {
+    console.log(`🟢 LocalForge server is already running on http://localhost:${PORT}`);
+    openBrowser(`http://localhost:${PORT}`);
+    return;
+  }
+
+  const config = readConfig();
+  if (!config.setupComplete) {
+    const ok = await runSetupWizard();
+    if (!ok) {
+      console.error('❌ Cannot start LocalForge without completing initial setup.');
+      process.exit(1);
+    }
+  }
+
+  console.log(`🚀 Starting LocalForge engine in background...`);
+  const child = spawn(process.execPath, [SERVER_FILE], {
+    detached: true,
+    stdio: 'ignore',
+    cwd: path.join(__dirname, '..'),
+  });
+
+  child.unref();
+  ensureConfigDir();
+  fs.writeFileSync(PID_FILE, String(child.pid), 'utf8');
+
+  // Poll /api/health every 300ms up to 15s timeout
+  const maxAttempts = 50;
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    await new Promise((r) => setTimeout(r, 300));
+    const healthy = await checkHealth(500);
+    if (healthy) {
+      console.log(`✅ LocalForge live at http://localhost:${PORT} (PID: ${child.pid})`);
+      openBrowser(`http://localhost:${PORT}`);
+      return;
+    }
+    attempts++;
+  }
+
+  console.error(`❌ Error: LocalForge server failed to respond on http://localhost:${PORT} within 15 seconds.`);
+  process.exit(1);
+}
+
+async function stopServer() {
+  ensureConfigDir();
+  let pid = null;
+
+  if (fs.existsSync(PID_FILE)) {
+    try {
+      pid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+    } catch (e) {}
+  }
+
+  const isAlive = await checkHealth(1000);
+
+  if (!pid && !isAlive) {
+    console.log('🔴 LocalForge is not running.');
+    return;
+  }
+
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      console.log(`Sent SIGTERM to LocalForge process (PID: ${pid})...`);
+    } catch (e) {
+      if (e.code !== 'ESRCH') {
+        console.error(`Failed to kill process ${pid}: ${e.message}`);
+      }
+    }
+
+    let attempts = 0;
+    while (attempts < 10) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        process.kill(pid, 0);
+        attempts++;
+      } catch (e) {
+        break;
+      }
+    }
+
+    try {
+      process.kill(pid, 0);
+      console.log(`Process ${pid} did not exit cleanly. Sending SIGKILL...`);
+      process.kill(pid, 'SIGKILL');
+    } catch (e) {}
+  }
+
+  if (fs.existsSync(PID_FILE)) {
+    try { fs.unlinkSync(PID_FILE); } catch (e) {}
+  }
+
+  console.log('🛑 LocalForge stopped successfully.');
+}
+
+async function statusServer() {
+  const isAlive = await checkHealth(1000);
+  let pid = null;
+
+  if (fs.existsSync(PID_FILE)) {
+    try {
+      pid = fs.readFileSync(PID_FILE, 'utf8').trim();
+    } catch (e) {}
+  }
+
+  if (isAlive) {
+    console.log(`🟢 LocalForge is RUNNING on http://localhost:${PORT}${pid ? ` (PID: ${pid})` : ''}`);
+  } else {
+    console.log(`🔴 LocalForge is STOPPED.`);
+  }
+}
+
+function doctorCommand() {
+  console.log('\n==================================================');
+  console.log('🩺 LocalForge Platform Doctor');
+  console.log('==================================================');
+  const platform = resolvePlatformConfig();
+  console.log(JSON.stringify(platform, null, 2));
+  console.log('\n');
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case 'stop':
+      await stopServer();
+      break;
+
+    case 'status':
+      await statusServer();
+      break;
+
+    case 'setup':
+      await runSetupWizard();
+      break;
+
+    case 'doctor':
+      doctorCommand();
+      break;
+
+    default:
+      await startServer();
+      break;
+  }
+}
+
+main().catch((err) => {
+  console.error(`❌ Unexpected error: ${err.message}`);
+  process.exit(1);
+});
