@@ -413,13 +413,13 @@ app.get('/api/jobs/:id', (req, res) => {
 // --- 5. Systemd User Supervisor Generator ---
 app.get('/api/systemd/unit', (req, res) => {
   const unitContent = `[Unit]
-Description=Local Nginx Stack Manager Service
+Description=LocalForge Stack Manager Service
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/sdev/Projects/nginx-panel
-ExecStart=/usr/bin/node /home/sdev/Projects/nginx-panel/server.js
+WorkingDirectory=${__dirname}
+ExecStart=${process.execPath} ${path.join(__dirname, 'server.js')}
 Restart=on-failure
 RestartSec=3
 
@@ -587,6 +587,7 @@ app.post('/api/ssl/generate', async (req, res) => {
     const result = await runCommand(sslCmd);
 
     if (result.success) {
+      await runCommand(`chmod 644 "${certPath}" "${keyPath}" && (sudo /usr/bin/chcon -t httpd_config_t "${certPath}" "${keyPath}" 2>/dev/null || true)`);
       job.status = 'completed';
       job.progress = 100;
       job.result = { certPath, keyPath, message: `SSL Certificate generated for ${domain}` };
@@ -681,6 +682,7 @@ app.post('/api/sites/create', async (req, res) => {
         fs.mkdirSync(NGINX_SSL_DIR, { recursive: true });
       }
       await runCommand(`openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -subj "/CN=${domain}/O=LocalDevStack"`);
+      await runCommand(`chmod 644 "${certPath}" "${keyPath}" && (sudo /usr/bin/chcon -t httpd_config_t "${certPath}" "${keyPath}" 2>/dev/null || true)`);
     }
 
     if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
@@ -786,7 +788,7 @@ app.post('/api/sites/create', async (req, res) => {
 
   try {
     fs.writeFileSync(tempPath, confContent, 'utf8');
-    const mvRes = await runCommand(`sudo mv "${tempPath}" "${targetPath}"`);
+    const mvRes = await runCommand(`sudo cp "${tempPath}" "${targetPath}" && sudo chown root:root "${targetPath}" && (sudo /usr/bin/chcon -t httpd_config_t "${targetPath}" 2>/dev/null || true) && sudo rm -f "${tempPath}"`);
     if (!mvRes.success) {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
       return res.status(500).json({ error: 'Failed to save configuration file', details: mvRes.error });
@@ -826,29 +828,59 @@ app.post('/api/sites/toggle', async (req, res) => {
   }
 
   const cleanName = path.basename(siteName);
-  const currentPath = path.join(NGINX_CONF_DIR, cleanName);
-  let newPath = '';
+  const baseName = cleanName.replace(/\.disabled$/, '').replace(/\.conf$/, '');
 
-  if (enable && cleanName.endsWith('.disabled')) {
-    newPath = path.join(NGINX_CONF_DIR, cleanName.replace('.disabled', ''));
-  } else if (!enable && cleanName.endsWith('.conf')) {
-    newPath = path.join(NGINX_CONF_DIR, `${cleanName}.disabled`);
+  const activePath = path.join(NGINX_CONF_DIR, `${baseName}.conf`);
+  const disabledPath = path.join(NGINX_CONF_DIR, `${baseName}.conf.disabled`);
+
+  const activeExists = fs.existsSync(activePath);
+  const disabledExists = fs.existsSync(disabledPath);
+
+  if (enable) {
+    if (activeExists) {
+      return res.json({ success: true, message: `Site ${baseName}.conf is already enabled.` });
+    }
+    if (!disabledExists) {
+      return res.status(404).json({ error: `Configuration file for ${baseName} not found in ${NGINX_CONF_DIR}` });
+    }
+
+    await saveConfigBackup(`${baseName}.conf.disabled`);
+    const mvRes = await runCommand(`sudo mv "${disabledPath}" "${activePath}" && (sudo /usr/bin/chcon -t httpd_config_t "${activePath}" 2>/dev/null || true)`);
+    if (!mvRes.success) {
+      return res.status(500).json({ error: 'Failed to enable site', details: mvRes.error });
+    }
+
+    const testRes = await runCommand('sudo nginx -t');
+    if (!testRes.success) {
+      await runCommand(`sudo mv "${activePath}" "${disabledPath}"`);
+      return res.status(400).json({ error: 'Nginx syntax test failed after enabling site', details: testRes.error });
+    }
+
+    await runCommand('sudo systemctl reload nginx');
+    return res.json({ success: true, message: `Site ${baseName}.conf enabled successfully!` });
   } else {
-    return res.json({ success: true, message: 'No state change required.' });
+    if (disabledExists && !activeExists) {
+      return res.json({ success: true, message: `Site ${baseName}.conf is already disabled.` });
+    }
+    if (!activeExists) {
+      return res.status(404).json({ error: `Configuration file for ${baseName} not found in ${NGINX_CONF_DIR}` });
+    }
+
+    await saveConfigBackup(`${baseName}.conf`);
+    const mvRes = await runCommand(`sudo mv "${activePath}" "${disabledPath}"`);
+    if (!mvRes.success) {
+      return res.status(500).json({ error: 'Failed to disable site', details: mvRes.error });
+    }
+
+    const testRes = await runCommand('sudo nginx -t');
+    if (!testRes.success) {
+      await runCommand(`sudo mv "${disabledPath}" "${activePath}"`);
+      return res.status(400).json({ error: 'Nginx syntax test failed after disabling site', details: testRes.error });
+    }
+
+    await runCommand('sudo systemctl reload nginx');
+    return res.json({ success: true, message: `Site ${baseName}.conf disabled successfully!` });
   }
-
-  await saveConfigBackup(cleanName);
-  const mvRes = await runCommand(`sudo mv "${currentPath}" "${newPath}"`);
-  if (!mvRes.success) return res.status(500).json({ error: 'Failed to toggle site status', details: mvRes.error });
-
-  const testRes = await runCommand('sudo nginx -t');
-  if (!testRes.success) {
-    await runCommand(`sudo mv "${newPath}" "${currentPath}"`);
-    return res.status(400).json({ error: 'Nginx syntax test failed after enabling site', details: testRes.error });
-  }
-
-  await runCommand('sudo systemctl reload nginx');
-  res.json({ success: true, message: `Site ${enable ? 'enabled' : 'disabled'} successfully!` });
 });
 
 app.delete('/api/sites/:name', async (req, res) => {
@@ -885,7 +917,7 @@ app.post('/api/sites/config/save', async (req, res) => {
 
   try {
     fs.writeFileSync(tempPath, content, 'utf8');
-    const mvRes = await runCommand(`sudo mv "${tempPath}" "${targetPath}"`);
+    const mvRes = await runCommand(`sudo cp "${tempPath}" "${targetPath}" && sudo chown root:root "${targetPath}" && (sudo /usr/bin/chcon -t httpd_config_t "${targetPath}" 2>/dev/null || true) && sudo rm -f "${tempPath}"`);
     if (!mvRes.success) {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
       return res.status(500).json({ error: 'Failed to update configuration file', details: mvRes.error });
@@ -1058,5 +1090,5 @@ app.get('/api/logs', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Nginx Stack Manager live at http://localhost:${PORT}`);
+  console.log(`🚀 LocalForge live at http://localhost:${PORT}`);
 });

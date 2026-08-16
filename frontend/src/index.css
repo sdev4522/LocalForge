@@ -1,0 +1,203 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-base: #12141A;
+    --bg-panel: #191C24;
+    --bg-panel-hover: #1F2330;
+    --bg-inset: #0D0F14;
+
+    --border-default: #262A34;
+    --border-strong: #363B48;
+
+    --text-primary: #EDEAE3;
+    --text-secondary: #ACAFB8;
+    --text-muted: #7B7F8B;
+    --text-on-ember: #12141A;
+
+    --ember: #FF6A3D;
+    --ember-hover: #FF8259;
+    --ember-muted: #8A3F26;
+    --copper: #C9915B;
+
+    --status-success: #3ED598;
+    --status-warning: #F5B94D;
+    --status-error: #FF5C5C;
+    --status-info: #5B9DFF;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-inset);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* LocalForge Bento Panel Card */
+.forge-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.forge-panel:hover {
+  border-color: var(--border-strong);
+}
+
+.forge-header {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* LocalForge Button Specifications */
+.btn-primary {
+  background-color: var(--ember);
+  color: var(--text-on-ember);
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 20px;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  outline: none;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--ember-hover);
+}
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-primary:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-weight: 500;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 20px;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  outline: none;
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-panel-hover);
+  border-color: var(--border-strong);
+}
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-secondary:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background-color: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 36px;
+  min-width: 36px;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  outline: none;
+}
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--bg-panel-hover);
+  color: var(--text-primary);
+}
+.btn-ghost:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-destructive {
+  background-color: transparent;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 36px;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  outline: none;
+}
+.btn-destructive:hover:not(:disabled) {
+  background-color: rgba(255, 92, 92, 0.1);
+}
+.btn-destructive:focus-visible {
+  outline: 2px solid var(--status-error);
+  outline-offset: 2px;
+}
+.btn-destructive:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Reduced Motion Pulse Animation */
+@media (prefers-reduced-motion: reduce) {
+  .pulse-green, .pulse-red, .animate-pulse, .animate-spin {
+    animation: none !important;
+  }
+}
