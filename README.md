@@ -1,8 +1,15 @@
-# ⚡ LocalForge — Native Linux Dev Stack Manager
+# ⚡ LocalForge — Native Linux Dev Stack Manager (Nginx, MariaDB, PHP-FPM)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Linux](https://img.shields.io/badge/platform-Fedora%20%7C%20Ubuntu%20%7C%20Arch-FCC624?logo=linux&logoColor=black)](#-supported-linux-distributions)
+[![Node.js](https://img.shields.io/badge/Node.js-Express-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![GitHub stars](https://img.shields.io/github/stars/sdev4522/LocalForge?style=social)](https://github.com/sdev4522/LocalForge)
 
 > **A fast, lightweight, Docker-free local development stack manager built specifically for Linux (Fedora, Ubuntu/Debian, Arch Linux).**
 
 LocalForge directly manages your native Linux web server infrastructure (`Nginx`, `MariaDB`, `PHP-FPM 8.x`) with **zero container overhead**, near-zero RAM usage, and instant local domain resolution (`.local`).
+
+It is a lightweight alternative to XAMPP, Laragon, Laravel Herd / Valet and Docker for **local PHP and Laravel development on Linux**: a web dashboard and a `localforge` CLI to create Nginx virtual hosts, manage MySQL/MariaDB databases, issue local HTTPS certificates and tail logs.
 
 ---
 
@@ -31,8 +38,8 @@ LocalForge directly manages your native Linux web server infrastructure (`Nginx`
 Clone the repository and run the installer script:
 
 ```bash
-git clone https://github.com/localforge/localforge.git
-cd localforge
+git clone https://github.com/sdev4522/LocalForge.git
+cd LocalForge
 ./install.sh
 ```
 
@@ -79,3 +86,5 @@ localforge doctor
 ## 📜 License
 
 Distributed under the [MIT License](LICENSE). Copyright (c) 2026 LocalForge Project Authors.
+
+If LocalForge saves you time, a star on [GitHub](https://github.com/sdev4522/LocalForge) helps other Linux developers find it.

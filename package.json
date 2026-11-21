@@ -1,7 +1,7 @@
 {
   "name": "localforge",
   "version": "1.0.0",
-  "description": "LocalForge — Local Development Stack Manager for Fedora, Ubuntu, and Arch Linux",
+  "description": "LocalForge: Docker-free local development stack manager for Linux (Fedora, Ubuntu, Arch). Manage Nginx, MariaDB/MySQL, PHP-FPM, local HTTPS and .local domains from a web dashboard and CLI.",
   "main": "server.js",
   "bin": {
     "localforge": "./bin/localforge"
@@ -10,7 +10,11 @@
   "author": "sdev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/localforge/localforge"
+    "url": "git+https://github.com/sdev4522/LocalForge.git"
+  },
+  "homepage": "https://github.com/sdev4522/LocalForge#readme",
+  "bugs": {
+    "url": "https://github.com/sdev4522/LocalForge/issues"
   },
   "scripts": {
     "start": "node server.js",
@@ -18,6 +22,14 @@
     "client": "cd frontend && npm run dev",
     "dev": "concurrently -n \"backend,frontend\" -c \"cyan,magenta\" \"node server.js\" \"cd frontend && npm run dev\"",
     "build:ui": "cd frontend && npm run build"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "systeminformation": "^5.33.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   },
   "keywords": [
     "localforge",
@@ -27,14 +39,23 @@
     "laravel",
     "fedora",
     "ubuntu",
-    "arch"
-  ],
-  "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "systeminformation": "^5.33.1"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.2"
-  }
+    "arch",
+    "mysql",
+    "php",
+    "nginx-manager",
+    "local-development",
+    "dev-environment",
+    "localhost",
+    "virtual-hosts",
+    "ssl",
+    "https",
+    "linux",
+    "debian",
+    "xampp-alternative",
+    "laragon-alternative",
+    "herd-alternative",
+    "docker-free",
+    "dashboard",
+    "cli"
+  ]
 }
